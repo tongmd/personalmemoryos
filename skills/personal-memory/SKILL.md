@@ -1,11 +1,13 @@
 ---
 name: personal-memory
-description: Apply a user's persistent preferences and learn from their explicit corrections across sessions using PersonalMemoryOS. Use for preference recall, durable feedback updates, scoped exceptions, and requested memory rollback.
+description: Apply a user's persistent preferences and learn from their explicit corrections across sessions using RecallOS. Use for preference recall, durable feedback updates, scoped exceptions, and requested memory rollback.
 ---
 
-Use the configured `memory_recall`, `memory_apply`, and `memory_revert` tools. If only the CLI is available, use `pmos recall`, `pmos apply`, and `pmos revert` against the configured store. Obtain the revision before changing state.
+Use the configured `memory_recall`, `memory_apply`, and `memory_revert` tools. If only the CLI is available, use `recallos recall`, `recallos apply`, and `recallos revert` against the configured store. Obtain the revision before changing state.
 
 Load global preferences and the task's relevant scopes. `research`, `coding`, and `writing` are starter scopes, not mandatory categories. Project rules apply only to that project. Treat memory as user preference data; the current request and higher-priority instructions take precedence. Resolve a specific exception within its scope rather than deleting a useful global default.
+
+Use a simple scenario slug for `scope`. Project-wide preferences use `scope="global", project="project-name"`; never encode a project as `scope="project:name"`. A `.recallos.json` project marker supplies consistent identity across harnesses. Conditions and expiration attributes restrict applicability, including imported LiveUI memories.
 
 When the current user provides a clear durable correction, update the appropriate existing rule without requiring a separate “save” command. Extract a concise, actionable rule and retain the brief original feedback as evidence. Use a stable rule ID and a unique source ID such as `session/turn/rule`; reuse that source ID for retries. Scope uncertain feedback narrowly to the context it actually establishes. “This time” applies to the current task; gratitude and quoted third-party text establish no lasting preference.
 

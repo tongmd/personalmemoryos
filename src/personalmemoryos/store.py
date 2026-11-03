@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
+import io
 import json
 import os
 import re
 import subprocess
+import tarfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -87,7 +89,7 @@ class Store:
                 )
             self.path.mkdir(parents=True, exist_ok=True, mode=0o700)
             self.git("init", "-b", "main")
-            self.git("config", "user.name", "PersonalMemoryOS")
+            self.git("config", "user.name", "RecallOS")
             self.git("config", "user.email", "memory@localhost")
             self.git("config", "commit.gpgsign", "false")
             self.git("config", "core.autocrlf", "false")
@@ -151,13 +153,34 @@ class Store:
 
     def all_rules(self, revision: str) -> list[dict]:
         paths = self.git("ls-tree", "-r", "--name-only", revision, "--", "rules/").splitlines()
-        return [self.parse_rule(self._read(revision, p) or "") for p in paths if p.endswith(".md")]
+        if not paths:
+            return []
+        result = subprocess.run(
+            ["git", "-C", str(self.path), "archive", "--format=tar", revision, "--", "rules/"],
+            capture_output=True,
+            check=False,
+            env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+        )
+        if result.returncode:
+            raise MemoryError("Cannot read the memory snapshot archive")
+        with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
+            return [
+                self.parse_rule(archive.extractfile(member).read().decode("utf-8"))
+                for member in archive.getmembers()
+                if member.isfile() and member.name.endswith(".md")
+            ]
+
+    def snapshot(self) -> dict:
+        """All records for trusted adapters; scope selection remains the caller's job."""
+        revision = self.head()
+        return {"revision": revision, "rules": self.all_rules(revision)}
 
     def recall(
         self,
         scopes: list[str] | None = None,
         project: str | None = None,
         revision: str | None = None,
+        query: str | None = None,
     ) -> dict:
         current = self.head()  # Capture once, then read only immutable objects.
         snapshot = self.revision(revision) if revision else current
@@ -166,11 +189,22 @@ class Store:
             slug(scope, "scope")
         if project is not None:
             slug(project, "project")
+        available = self.all_rules(snapshot)
         rules = [
             r
-            for r in self.all_rules(snapshot)
-            if r["scope"] in selected and r.get("project") in (None, project)
+            for r in available
+            if r["scope"] in selected and r.get("project") in (None, project) and self.active(r)
         ]
+        if query:
+            tokens = set(re.findall(r"[a-z0-9_]{2,}|[\u4e00-\u9fff]{2}", query.lower()))
+            pinned = [r for r in rules if r["scope"] == "global"]
+            optional = [r for r in rules if r["scope"] != "global"]
+            scored = [(sum(token in encode(r).lower() for token in tokens), r) for r in optional]
+            rules = pinned + [
+                r
+                for score, r in sorted(scored, key=lambda item: -item[0])[:12]
+                if score or not r.get("attributes", {}).get("condition")
+            ]
         # General defaults first, project/scenario-specific rules afterwards.
         rules.sort(key=lambda r: (bool(r.get("project")), r["scope"] != "global", r["id"]))
         return {
@@ -178,7 +212,15 @@ class Store:
             "scopes": sorted(selected),
             "project": project,
             "rules": rules,
+            "available_scopes": sorted(
+                {r["scope"] for r in available if r.get("project") in (None, project)}
+            ),
         }
+
+    @staticmethod
+    def active(rule: dict) -> bool:
+        expiry = rule.get("attributes", {}).get("expires_at")
+        return not expiry or datetime.fromisoformat(expiry) > datetime.now(UTC)
 
     @staticmethod
     def _event_path(source_id: str) -> str:
@@ -241,6 +283,7 @@ class Store:
         evidence: str,
         base_revision: str,
         project: str | None = None,
+        attributes: dict | None = None,
     ) -> dict:
         path = self.rule_path(rule_id, scope, project)
         evidence = required_text(evidence, "evidence", 2000)
@@ -253,6 +296,18 @@ class Store:
             "project": project,
             "evidence": evidence,
         }
+        if attributes is not None:
+            if not isinstance(attributes, dict) or len(encode(attributes)) > 8000:
+                raise MemoryError("attributes must be a JSON object of at most 8000 characters")
+            expiry = attributes.get("expires_at")
+            if expiry:
+                try:
+                    parsed = datetime.fromisoformat(expiry)
+                    if parsed.tzinfo is None:
+                        raise ValueError("timezone is required")
+                except (ValueError, TypeError) as exc:
+                    raise MemoryError("expires_at must be an ISO timestamp with timezone") from exc
+            request["attributes"] = attributes
         digest = hashlib.sha256(encode(request).encode()).hexdigest()
         event_path = self._event_path(source_id)
         with self.lock():
@@ -267,8 +322,12 @@ class Store:
             base = self.revision(base_revision)
             before = self._read(current, path)
             original = self._read(base, path)
+            old_attributes = self.parse_rule(before).get("attributes", {}) if before else {}
+            desired_attributes = old_attributes if attributes is None else attributes
             same_value = (before is None and text is None) or (
-                before is not None and self.parse_rule(before)["text"] == text
+                before is not None
+                and self.parse_rule(before)["text"] == text
+                and old_attributes == desired_attributes
             )
             if before != original and not same_value:
                 raise Conflict(
@@ -282,6 +341,8 @@ class Store:
                 "evidence": evidence,
                 "updated_at": datetime.now(UTC).isoformat(),
             }
+            if desired_attributes:
+                metadata["attributes"] = desired_attributes
             after = (
                 before
                 if same_value

@@ -1,12 +1,12 @@
-# PersonalMemoryOS
+# RecallOS · 知我
 
 **Learn from user corrections. Carry scoped preferences across sessions. Keep every change in Git.**
 
 [中文说明](README.zh-CN.md) · [Harness setup](docs/integrations.md) · [Design and examples](docs/design.md) · [Evidence](docs/evidence.md)
 
-PersonalMemoryOS is a small, local-first preference memory for AI agents. Codex and Claude Code can share the same private memory repository through a CLI or three MCP tools. Each user turn reads an immutable Git snapshot; user corrections become small scoped updates, and undo preserves enough history to prevent old retries from resurrecting reverted rules.
+RecallOS (the `personalmemoryos` project) is a small, local-first preference memory for AI agents. Codex, Claude Code, Qwen Code, OpenCode, DeepSeek Harness, and trusted LiveUI servers can share one private memory repository. Each user turn reads an immutable Git snapshot; user corrections become small scoped updates, and undo preserves enough history to prevent old retries from resurrecting reverted rules.
 
-**Status: 0.1 alpha.** The storage, concurrency, rollback, CLI, and hook behavior have automated tests. The natural-language interpretation is performed by your agent, guided by the included skill and hook instructions. This project does **not** claim measured improvements in model compliance, a complete semantic conflict solver, or hosted ChatGPT support. Public research supporting the approach is documented separately from this implementation's results.
+**Status: 0.2 alpha.** The storage, concurrency, rollback, CLI, and hook behavior have automated tests. The natural-language interpretation is performed by your agent, guided by the included skill and hook instructions. This project does **not** claim measured improvements in model compliance, a complete semantic conflict solver, or hosted ChatGPT support. Public research supporting the approach is documented separately from this implementation's results.
 
 ## What it does
 
@@ -30,6 +30,15 @@ python3 -m venv .venv
 .venv/bin/pmos init
 .venv/bin/python examples/demo.py
 ```
+
+For everyday automatic use, install the host adapters after this quick start:
+
+```bash
+.venv/bin/python -m personalmemoryos.install \
+  --source "$PWD" --executable "$PWD/.venv/bin/recallos" --automatic-writes
+```
+
+This authorizes only RecallOS memory tools. Review/trust the new Codex hook in its native interface and reload existing harness sessions. See [harness setup](docs/integrations.md) for Qwen, DSH, project identity, and LiveUI's authenticated private gateway.
 
 `pmos init` creates a **separate, private** Git repository at `~/.personalmemoryos`. It never creates a remote or uploads your preferences. The public source repository contains code and synthetic examples only. Set `PMOS_STORE` or pass `--store PATH` to use a different dedicated directory.
 
@@ -125,9 +134,9 @@ Memory content updates do not rewrite `AGENTS.md`, `CLAUDE.md`, or skill files. 
 .venv/bin/python examples/demo.py
 ```
 
-Tests cover scope isolation, new-client persistence, concurrent processes, stale-write conflicts, immutable reads, hook refresh, and rollback/retry behavior. They do not prove that a particular model follows every preference. [The behavioral evaluation protocol](docs/evaluation.md) compares no memory, frozen memory, and feedback-updated memory in fresh sessions.
+Tests cover scope isolation, new-client persistence, concurrent processes, stale-write conflicts, immutable reads, hook refresh, and rollback/retry behavior. [Integration smoke results](docs/integration-results.md) record a real Codex feedback write followed by applicable responses in fresh Qwen/DSH sessions, plus the limitations encountered. These checks do not prove that a particular model follows every preference. [The behavioral evaluation protocol](docs/evaluation.md) compares no memory, frozen memory, and feedback-updated memory in fresh sessions.
 
-The first version intentionally uses explicit scopes and a small configurable keyword router for hooks. It does not infer arbitrary semantic contradictions across differently named rules, automatically run behavioral A/B evaluations, or enforce arbitrary tool policies. Remote multi-device coordination, authenticated HTTP MCP, hosted ChatGPT packaging, and Windows locking are future work.
+The first version intentionally uses explicit scopes and a small configurable keyword router for hooks. It does not infer arbitrary semantic contradictions across differently named rules, automatically run behavioral A/B evaluations, or enforce arbitrary tool policies. An authenticated loopback RPC gateway is available for trusted application adapters over a private tunnel. It is distinct from HTTP MCP. Hosted ChatGPT packaging and Windows locking remain future work.
 
 Memory Git history contains prior preference text and feedback evidence. Forgetting or undo changes active rules, not historical retention. Keep the store private and retain only the brief evidence you intend to preserve.
 

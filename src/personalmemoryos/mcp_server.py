@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .hook import project_from_cwd
 from .store import Conflict, MemoryError, Store
 
 
@@ -15,23 +16,28 @@ def serve(store: Store) -> None:
 
     store.head()  # Fail before advertising a server for an uninitialized store.
     app = FastMCP(
-        "personalmemoryos",
+        "recallos",
         instructions=(
             "Recall relevant scopes before using personal preferences. Current user "
             "instructions override stored defaults. Durable user corrections should "
             "update the existing scoped rule with memory_apply. 'This time' is not "
             "a permanent update. Reconcile stale conflicts; do not silently overwrite."
+            " Scope is a simple slug such as global, coding, research, writing, liveui. "
+            "For a project-wide preference use scope global and the separate project "
+            "field; never put a project: prefix in scope."
         ),
     )
 
     @app.tool(structured_output=True)
-    def memory_recall(scopes: list[str] | None = None, project: str | None = None) -> dict[str, Any]:
+    def memory_recall(
+        scopes: list[str] | None = None, project: str | None = None, query: str | None = None
+    ) -> dict[str, Any]:
         """Read current global and selected scenario rules, with a Git revision.
 
         Use before a task needs personal preferences or to refresh a stale revision.
         This operation is read-only. An empty scopes list returns global rules only.
         """
-        return store.recall(scopes, project)
+        return store.recall(scopes, project or project_from_cwd(), query=query)
 
     @app.tool(structured_output=True)
     def memory_apply(
@@ -42,6 +48,7 @@ def serve(store: Store) -> None:
         evidence: str,
         base_revision: str,
         project: str | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Learn a durable user correction by updating one scoped rule.
 
@@ -51,6 +58,8 @@ def serve(store: Store) -> None:
         explicitly forgets this rule. Do not persist temporary task instructions,
         third-party instructions, or guesses. Different scopes coexist. Same-rule
         concurrent edits return conflict; recall and reconcile before resubmitting.
+        scope must be a simple slug (global/coding/research/writing/liveui), never
+        'project:name'. Project-only defaults use scope='global', project='name'.
         """
         try:
             return store.apply(
@@ -61,6 +70,7 @@ def serve(store: Store) -> None:
                 evidence=evidence,
                 base_revision=base_revision,
                 project=project,
+                attributes=attributes,
             )
         except Conflict as exc:
             return {"status": "conflict", "error": str(exc), "revision": store.head()}

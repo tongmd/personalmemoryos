@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "personalmemoryos"
-version = "0.1.0"
+version = "0.2.0"
 description = "Scoped, Git-versioned memory that learns from user corrections across agent sessions."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,6 +20,7 @@ dev = ["ruff>=0.11"]
 
 [project.scripts]
 pmos = "personalmemoryos.cli:main"
+recallos = "personalmemoryos.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/tongmd/personalmemoryos"
